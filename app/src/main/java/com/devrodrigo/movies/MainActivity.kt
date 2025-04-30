@@ -6,8 +6,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,11 +36,14 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -46,6 +52,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.withContext
 
 
@@ -53,30 +60,38 @@ class MainActivity : ComponentActivity() {
 
     private val db by lazy { AppDatabase.getDatabase(applicationContext) }
 
+    private val isLoading = MutableStateFlow(false)
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         checkAndLoadCsv()
         setContent {
             MoviesTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    val navController = rememberNavController()
+                val isLoadingState = isLoading.collectAsState()
+                if (isLoadingState.value) {
+                    ProgressScreen()
+                } else {
+                    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                        val navController = rememberNavController()
 
-                    NavHost(
-                        navController = navController,
-                        startDestination = "movieList",
-                        modifier = Modifier.padding(innerPadding)
-                    ) {
-                        composable("movieList") {
-                            val movies = rememberMoviesFromDb()
-                            MovieList(movies = movies, navController = navController)
-                        }
-                        composable(
-                            "movieDetail/{movieId}",
-                            arguments = listOf(navArgument("movieId") { type = NavType.IntType })
-                        ) { backStackEntry ->
-                            val movieId = backStackEntry.arguments?.getInt("movieId") ?: 0
-                            MovieDetailScreen(movieId = movieId, db = db, navController = navController)
+                        NavHost(
+                            navController = navController,
+                            startDestination = "movieList",
+                            modifier = Modifier.padding(innerPadding)
+                        ) {
+                            composable("movieList") {
+                                val movies = rememberMoviesFromDb()
+                                MovieList(movies = movies, navController = navController)
+                            }
+                            composable(
+                                "movieDetail/{movieId}",
+                                arguments = listOf(navArgument("movieId") { type = NavType.IntType })
+                            ) { backStackEntry ->
+                                val movieId = backStackEntry.arguments?.getInt("movieId") ?: 0
+                                MovieDetailScreen(movieId = movieId, db = db, navController = navController)
+                            }
                         }
                     }
                 }
@@ -88,6 +103,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun rememberMoviesFromDb(): List<ModelMovies> {
         val movieList = remember { mutableStateListOf<ModelMovies>() }
+
 
         LaunchedEffect(true) {
             lifecycleScope.launch(Dispatchers.IO) {
@@ -114,6 +130,8 @@ class MainActivity : ComponentActivity() {
     private fun csvLoad() {
         val inputStream: InputStream = assets.open("TMDB.csv")
         val db = AppDatabase.getDatabase(applicationContext)
+
+        isLoading.value = true
 
         lifecycleScope.launch(Dispatchers.IO) {
             val movieList = mutableListOf<ModelMovies>()
@@ -152,6 +170,7 @@ class MainActivity : ComponentActivity() {
             }
 
             withContext(Dispatchers.Main) {
+                isLoading.value = false
                 Toast.makeText(applicationContext, "Dados carregados com sucesso!", Toast.LENGTH_SHORT).show()
             }
         }
@@ -182,6 +201,7 @@ fun MovieList(
     modifier: Modifier = Modifier,
     navController: NavController
 ) {
+
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Fixed(2),
         modifier = modifier
@@ -271,4 +291,28 @@ fun MovieDetailScreen(movieId: Int, db: AppDatabase, navController: NavControlle
     }
 }
 
+
+
+@Composable
+fun ProgressScreen() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(64.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "Carregando dados...",
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
+}
 
